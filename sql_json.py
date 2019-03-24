@@ -26,8 +26,8 @@ grammar = r"""
 
     element: "[" ("*" | _element_ranges) "]"
     _element_ranges: element_range ("," element_range)*
-    element_range: ELEMENT_INDEX ["to" ELEMENT_INDEX]
-    ELEMENT_INDEX: INT | "last"
+    element_range: element_index ["to" element_index]
+    element_index: INT | "last"
 
     filter: "TODO"
 
@@ -44,18 +44,44 @@ grammar = r"""
 parser = lark.Lark(grammar, parser="lalr", start="json_path_expr", debug=True)
 
 
-class Node:
+def parse(input):
+    tree = parser.parse(input)
+    print(tree.pretty())
+    transformed = Transformer().transform(tree)
+    print(transformed.pretty())
+    return transformed
+
+
+@attr.s(slots=True)
+class ASTNode:
     pass
 
 
-@attr.s
-class Member(Node):
-    name = attr.ib(default=None)
+@attr.s(slots=True)
+class PathExpression(ASTNode):
+    steps = attr.ib(factory=list)
+
+
+@attr.s(slots=True)
+class Member(ASTNode):
+    name = attr.ib()
+
+
+@attr.s(slots=True)
+class Element(ASTNode):
+    ranges = attr.ib()
 
 
 class Transformer(lark.Transformer):
-    def member(self, children):
-        return Member(*children)
+    def path_expr(self, steps):
+        return PathExpression(steps=steps)
+
+    def member(self, names):
+        if not names:
+            name = None  # wildcard
+        else:
+            (name,) = names
+        return Member(name=name)
 
     def member_name(self, children):
         (name,) = children
@@ -67,10 +93,26 @@ class Transformer(lark.Transformer):
         assert end == len(quoted_name)
         return name
 
+    def element(self, ranges):
+        if not ranges:
+            ranges = None  # wildcard
+        return Element(ranges=ranges)
 
-def parse(input):
-    tree = parser.parse(input)
-    print(tree.pretty())
-    transformed = Transformer().transform(tree)
-    print(transformed.pretty())
-    return transformed
+    def element_range(self, indexes):
+        n_indexes = len(indexes)
+        if n_indexes == 0:
+            start = end = None
+        elif n_indexes == 1:
+            start = end = indexes[0]
+        else:
+            start, end = indexes
+        return start, end
+
+    def element_index(self, children):
+        if not children:
+            return None  # last
+        (s,) = children
+        return int(s)
+
+    # def __getattr__(self, name):
+    #     raise NotImplementedError(f"no transformer for {name}")
