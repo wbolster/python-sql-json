@@ -1,8 +1,11 @@
 import lark
 
 grammar = r"""
+    %import common.CNAME
+    %import common.ESCAPED_STRING
     %import common.INT
     %import common.WS
+
     %ignore WS
 
     start: json_path_expr
@@ -16,7 +19,7 @@ grammar = r"""
 
     step: member | element | filter | method
 
-    member: "." ("*" | NAME)
+    member: "." ("*" | CNAME | ESCAPED_STRING)
 
     element: "[" (element_wildcard | element_ranges) "]"
     element_wildcard: "*"
@@ -26,9 +29,7 @@ grammar = r"""
 
     filter: "TODO"
 
-    method: "." NAME "()"
-
-    NAME: /[A-Z_][A-Z0-9_]*/i
+    method: "." CNAME "()"
     """
 
 # todo: signed numbers
