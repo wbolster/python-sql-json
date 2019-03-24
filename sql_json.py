@@ -1,3 +1,6 @@
+import json
+
+import attr
 import lark
 
 grammar = r"""
@@ -17,7 +20,9 @@ grammar = r"""
 
     ?step: member | element | filter | method
 
-    member: "." ("*" | CNAME | ESCAPED_STRING)
+    member: "." ("*" | member_name | member_name_quoted)
+    member_name: CNAME
+    member_name_quoted: ESCAPED_STRING
 
     element: "[" ("*" | _element_ranges) "]"
     _element_ranges: element_range ("," element_range)*
@@ -39,6 +44,33 @@ grammar = r"""
 parser = lark.Lark(grammar, parser="lalr", start="json_path_expr", debug=True)
 
 
+class Node:
+    pass
+
+
+@attr.s
+class Member(Node):
+    name = attr.ib(default=None)
+
+
+class Transformer(lark.Transformer):
+    def member(self, children):
+        return Member(*children)
+
+    def member_name(self, children):
+        (name,) = children
+        return str(name)
+
+    def member_name_quoted(self, children):
+        (quoted_name,) = children
+        name, end = json.decoder.scanstring(quoted_name, 1)
+        assert end == len(quoted_name)
+        return name
+
+
 def parse(input):
     tree = parser.parse(input)
-    return tree
+    print(tree.pretty())
+    transformed = Transformer().transform(tree)
+    print(transformed.pretty())
+    return transformed

@@ -10,7 +10,7 @@ TEST_INPUTS = [
     "$.foo.bar.baz",
     "$.*",
     "$.foo.*",
-    r'$."foo\u2068".*',
+    r'$."foo\u2603".*',
     "$.*.foo",
     "$[*]",
     "$[ *]",
@@ -32,5 +32,5 @@ TEST_INPUTS = [
 def test_sql_json(test_input):
     print()
     print(test_input)
-    parsed = sql_json.parse(test_input)
-    print(parsed.pretty())
+    _tree = sql_json.parse(test_input)
+    # __import__("IPython").embed()  # FIXME
