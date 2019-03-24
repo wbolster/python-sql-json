@@ -24,9 +24,6 @@ TEST_INPUTS = [
     "$[3].bar[*].baz",
     "$[*].bar[2 to 3, 4, last].baz",
     "$.size()",
-    "-$.foo",
-    "$.foo+$.bar*$.baz",
-    # "- $.foo * $.bar + $.baz",
 ]
 
 

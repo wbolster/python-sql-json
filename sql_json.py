@@ -6,20 +6,8 @@ grammar = r"""
 
     start: json_path_expr
 
-    json_path_expr: _ws? [mode _ws] wff
+    json_path_expr: _ws? [mode _ws] absolute_path_expr
     !mode: "strict" | "lax"
-
-    wff: additive_expr
-
-    UNARY_OPERATOR: "+" | "-"
-    ADDITIVE_OPERATOR: "+" | "-"
-    MULTIPLICATIVE_OPERATOR: "*" | "/" | "%"
-
-    ?additive_expr: [additive_expr ADDITIVE_OPERATOR _ws?] multiplicative_expr
-    ?multiplicative_expr: [multiplicative_expr MULTIPLICATIVE_OPERATOR _ws?] unary_expr
-    ?unary_expr: (accessor_expr _ws? | UNARY_OPERATOR _ws? unary_expr)
-
-    accessor_expr: absolute_path_expr | relative_path_expr
 
     absolute_path_expr: "$" path_expr
     relative_path_expr: "@" path_expr
