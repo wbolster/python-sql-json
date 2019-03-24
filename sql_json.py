@@ -8,8 +8,6 @@ grammar = r"""
 
     %ignore WS
 
-    start: json_path_expr
-
     json_path_expr: [MODE] absolute_path_expr
     MODE: "strict" | "lax"
 
@@ -38,9 +36,9 @@ grammar = r"""
 # todo: json string Unicode escapes
 # todo: match json string semantics (\n and other escapes)
 
-parser = lark.Lark(grammar, parser="lalr", debug=True)
+parser = lark.Lark(grammar, parser="lalr", start="json_path_expr", debug=True)
 
 
 def parse(input):
-    parsed = parser.parse(input)
-    return parsed
+    tree = parser.parse(input)
+    return tree
