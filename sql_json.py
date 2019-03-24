@@ -1,3 +1,4 @@
+import enum
 import json
 
 import attr
@@ -11,12 +12,14 @@ grammar = r"""
 
     %ignore WS
 
-    json_path_expr: [MODE] absolute_path_expr
-    MODE: "strict" | "lax"
+    json_path: [mode] absolute_path
 
-    absolute_path_expr: "$" path_expr
-    relative_path_expr: "@" path_expr
-    path_expr: step*
+    mode: "strict" -> mode_strict
+        | "lax" -> mode_lax
+
+    absolute_path: "$" path
+    relative_path: "@" path
+    path: step*
 
     ?step: member | element | filter | method
 
@@ -41,14 +44,14 @@ grammar = r"""
 # todo: json string Unicode escapes
 # todo: match json string semantics (\n and other escapes)
 
-parser = lark.Lark(grammar, parser="lalr", start="json_path_expr", debug=True)
+parser = lark.Lark(grammar, parser="lalr", start="json_path", debug=True)
 
 
 def parse(input):
     tree = parser.parse(input)
     print(tree.pretty())
     transformed = Transformer().transform(tree)
-    print(transformed.pretty())
+    print(transformed)
     return transformed
 
 
@@ -57,9 +60,21 @@ class ASTNode:
     pass
 
 
+class PathMode(enum.Enum):
+    strict = enum.auto()
+    lax = enum.auto()
+
+
+class PathType(enum.Enum):
+    absolute = enum.auto()
+    relative = enum.auto()
+
+
 @attr.s(slots=True)
-class PathExpression(ASTNode):
+class Path(ASTNode):
     steps = attr.ib(factory=list)
+    type = attr.ib(PathType.absolute)
+    mode = attr.ib(default=PathMode.strict)
 
 
 @attr.s(slots=True)
@@ -73,8 +88,33 @@ class Element(ASTNode):
 
 
 class Transformer(lark.Transformer):
-    def path_expr(self, steps):
-        return PathExpression(steps=steps)
+    def json_path(self, children):
+        if isinstance(children[0], PathMode):
+            mode, path = children
+            path.mode = mode
+        else:
+            (path,) = children
+        return path
+
+    def absolute_path(self, children):
+        (path,) = children
+        path.type = PathType.absolute
+        return path
+
+    def relative(self, children):
+        (path,) = children
+        path.type = PathType.relative
+        return path
+
+    def path(self, steps):
+        return Path(steps=steps)
+
+    def mode_lax(self, children):
+        # todo: use one method for lax/strict and do enum lookup
+        return PathMode.lax
+
+    def mode_strict(self, children):
+        return PathMode.strict
 
     def member(self, names):
         if not names:
@@ -114,5 +154,8 @@ class Transformer(lark.Transformer):
         (s,) = children
         return int(s)
 
-    # def __getattr__(self, name):
-    #     raise NotImplementedError(f"no transformer for {name}")
+    def method(self, children):
+        return "somemethod"  # todo
+
+    def __getattr__(self, name):
+        raise NotImplementedError(f"no transformer for {name}")
