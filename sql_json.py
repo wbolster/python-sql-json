@@ -10,21 +10,20 @@ grammar = r"""
 
     start: json_path_expr
 
-    json_path_expr: [mode] absolute_path_expr
-    !mode: "strict" | "lax"
+    json_path_expr: [MODE] absolute_path_expr
+    MODE: "strict" | "lax"
 
     absolute_path_expr: "$" path_expr
     relative_path_expr: "@" path_expr
     path_expr: step*
 
-    step: member | element | filter | method
+    ?step: member | element | filter | method
 
     member: "." ("*" | CNAME | ESCAPED_STRING)
 
-    element: "[" (element_wildcard | element_ranges) "]"
-    element_wildcard: "*"
-    element_ranges: element_range ("," element_range)*
-    !element_range: ELEMENT_INDEX ["to" ELEMENT_INDEX]
+    element: "[" ("*" | _element_ranges) "]"
+    _element_ranges: element_range ("," element_range)*
+    element_range: ELEMENT_INDEX ["to" ELEMENT_INDEX]
     ELEMENT_INDEX: INT | "last"
 
     filter: "TODO"
@@ -35,6 +34,9 @@ grammar = r"""
 # todo: signed numbers
 # todo: string quoted members
 # todo: last - number  (ibm)
+# todo: $."$varname" uses the variable name as lookup key
+# todo: json string Unicode escapes
+# todo: match json string semantics (\n and other escapes)
 
 parser = lark.Lark(grammar, parser="lalr", debug=True)
 
