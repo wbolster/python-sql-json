@@ -49,7 +49,13 @@ parser = lark.Lark(grammar, parser="lalr", start="json_path", debug=True)
 def parse(input):
     tree = parser.parse(input)
     print(tree.pretty())
-    transformed = Transformer().transform(tree)
+    try:
+        transformed = Transformer().transform(tree)
+    except lark.exceptions.VisitError as exc:
+        if exc.__context__ is not None:
+            raise exc.__context__ from None
+        else:
+            raise
     print(transformed)
     return transformed
 
