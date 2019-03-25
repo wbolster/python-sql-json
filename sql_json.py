@@ -13,9 +13,8 @@ grammar = r"""
     %ignore WS
 
     json_path: [mode] absolute_path
-
-    mode: "strict" -> mode_strict
-        | "lax" -> mode_lax
+    mode: MODE
+    MODE: "strict" | "lax"
 
     absolute_path: "$" path
     relative_path: "@" path
@@ -61,8 +60,8 @@ class ASTNode:
 
 
 class PathMode(enum.Enum):
-    strict = enum.auto()
     lax = enum.auto()
+    strict = enum.auto()
 
 
 class PathType(enum.Enum):
@@ -73,8 +72,8 @@ class PathType(enum.Enum):
 @attr.s(slots=True)
 class Path(ASTNode):
     steps = attr.ib(factory=list)
-    type = attr.ib(PathType.absolute)
-    mode = attr.ib(default=PathMode.strict)
+    type = attr.ib(default=PathType.absolute)
+    mode = attr.ib(default=PathMode.lax)
 
 
 @attr.s(slots=True)
@@ -109,12 +108,9 @@ class Transformer(lark.Transformer):
     def path(self, steps):
         return Path(steps=steps)
 
-    def mode_lax(self, children):
-        # todo: use one method for lax/strict and do enum lookup
-        return PathMode.lax
-
-    def mode_strict(self, children):
-        return PathMode.strict
+    def mode(self, children):
+        (s,) = children
+        return PathMode[s]
 
     def member(self, names):
         if not names:
