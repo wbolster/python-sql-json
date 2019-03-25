@@ -36,7 +36,13 @@ def test_sql_json(test_input):
     # __import__("IPython").embed()  # FIXME
 
 
-def test_query():
+def test_path_members():
     doc = {"foo": {"bar": {"baz": 123}}}
-    query = sql_json.compile("$.foo.bar.baz")
-    assert query(doc) == 123
+    query = "$.foo.bar.baz"
+    assert sql_json.query(query, doc) == 123
+
+
+def test_path_elements():
+    doc = {"items": [1, 2, 3]}
+    # assert sql_json.query("$.items[0]", doc) == 1
+    # assert sql_json.query("$.items[*]", doc) == [1, 2, 3]

@@ -61,6 +61,10 @@ def compile(input):
     return transformed
 
 
+def query(query, context):
+    return compile(query)(context)
+
+
 @attr.s(slots=True)
 class ASTNode:
     @classmethod
@@ -93,45 +97,54 @@ class Path(ASTNode):
         """Evaluate this path against a context document."""
         objs = [context]
         for step in self.steps:
-            objs = itertools.chain.from_iterable(expand_step(step, obj) for obj in objs)
-        results = list(objs)
-        return results if self.has_wildcards else results[0]
+            objs = list(itertools.chain.from_iterable(step(obj) for obj in objs))
+        return objs if self.has_wildcards else objs[0]
 
     @property
     def has_wildcards(self):
-        return any(
-            isinstance(step, (Element, Member)) and step.name is None
-            for step in self.steps
-        )
+        for step in self.steps:
+            if isinstance(step, Member) and step.name is None:
+                return True
+            if isinstance(step, Element) and step.ranges is None:
+                return True
+        return False
 
 
-def expand_step(step, obj):
-    if isinstance(step, Member):
-        if step.name is None:
-            # Single object
-            yield obj[step.name]
-        else:
-            # Wildcard
-            yield from obj.values()
-    else:
+@attr.s(slots=True)
+class Step(ASTNode):
+    def __call__(self, obj):
         raise NotImplementedError
 
 
 @attr.s(slots=True)
-class Member(ASTNode):
+class Member(Step):
     name = attr.ib()
+
+    def __call__(self, obj):
+        if self.name is None:  # wildcard
+            yield from obj.values()
+        else:
+            yield obj[self.name]
 
 
 @attr.s(slots=True)
-class Element(ASTNode):
+class Element(Step):
     ranges = attr.ib()
 
     def validate(self):
         if self.ranges is None:
             return
-        for start, end in self.ranges:
-            if start is not None and end is not None and start > end:
-                raise ValueError(f"invalid range: {start} to {end}")
+        for start, stop in self.ranges:
+            if start is not None and stop is not None and stop != -1 and start > stop:
+                raise ValueError(f"invalid range: {start} to {stop}")
+
+    def __call__(self, obj):
+        if self.ranges is None:  # wildcard
+            yield from obj
+        selectors = [False for _ in range(len(obj))]
+        for start, stop in self.ranges:
+            ...
+        yield from itertools.compress(obj, selectors)
 
 
 class Transformer(lark.Transformer):
@@ -173,8 +186,8 @@ class Transformer(lark.Transformer):
 
     def member_name_quoted(self, children):
         (quoted_name,) = children
-        name, end = json.decoder.scanstring(quoted_name, 1)
-        assert end == len(quoted_name)
+        name, pos = json.decoder.scanstring(quoted_name, 1)
+        assert pos == len(quoted_name)
         return name
 
     def element(self, ranges):
@@ -185,16 +198,20 @@ class Transformer(lark.Transformer):
     def element_range(self, indexes):
         n_indexes = len(indexes)
         if n_indexes == 0:
-            start = end = None
+            start = stop = None
         elif n_indexes == 1:
-            start = end = indexes[0]
+            start = indexes[0]
+            if start == -1:
+                stop = None
+            else:
+                stop = start + 1
         else:
-            start, end = indexes
-        return start, end
+            start, stop = indexes
+        return start, stop
 
     def element_index(self, children):
         if not children:
-            return None  # last
+            return -1  # last
         (s,) = children
         return int(s)
 
