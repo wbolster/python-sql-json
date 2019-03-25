@@ -98,16 +98,16 @@ class Path(ASTNode):
         objs = [context]
         for step in self.steps:
             objs = list(itertools.chain.from_iterable(step(obj) for obj in objs))
-        return objs if self.has_wildcards else objs[0]
+
+        if self.has_scalar_result:
+            (result,) = objs
+            return result
+        else:
+            return objs
 
     @property
-    def has_wildcards(self):
-        for step in self.steps:
-            if isinstance(step, Member) and step.name is None:
-                return True
-            if isinstance(step, Element) and step.ranges is None:
-                return True
-        return False
+    def has_scalar_result(self):
+        return all(isinstance(step, (Member, Element)) for step in self.steps)
 
 
 @attr.s(slots=True)
@@ -117,41 +117,62 @@ class Step(ASTNode):
 
 
 @attr.s(slots=True)
-class WildcardMember(Step):
-    def __call__(self, obj):
-        yield from obj.values()
-
-
-@attr.s(slots=True)
 class Member(Step):
     name = attr.ib()
 
     def __call__(self, obj):
+        assert isinstance(obj, dict)
         yield obj[self.name]
 
 
 @attr.s(slots=True)
-class Element(Step):
-    ranges = attr.ib()
+class WildcardMember(Step):
+    def __call__(self, obj):
+        assert isinstance(obj, dict)
+        yield from obj.values()
 
-    def validate(self):
-        if self.ranges is None:
-            return
-        for start, stop in self.ranges:
-            if start is not None and stop is not None and stop != -1 and start > stop:
-                raise ValueError(f"invalid range: {start} to {stop}")
+
+@attr.s(slots=True)
+class Element(Step):
+    index = attr.ib()
 
     def __call__(self, obj):
-        selectors = [False for _ in range(len(obj))]
-        for start, stop in self.ranges:
-            ...
-        yield from itertools.compress(obj, selectors)
+        assert isinstance(obj, list)
+        yield obj[self.index]
 
 
 @attr.s(slots=True)
 class WildcardElement(Step):
     def __call__(self, obj):
+        assert isinstance(obj, list)
         yield from obj
+
+
+@attr.s(slots=True)
+class RangesElement(Step):
+    ranges = attr.ib()
+
+    def validate(self):
+        assert self.ranges
+        for start, stop in self.ranges:
+            if start is not None and stop is not None and stop != -1 and start > stop:
+                raise ValueError(f"invalid range: {start} to {stop}")
+
+    def __call__(self, obj):
+        # todo how to deal with out of range values?
+        assert isinstance(obj, list)
+        selectors = [False for _ in range(len(obj))]
+        for start, stop in self.ranges:
+            assert (start, stop) != (None, None)
+            if start is None:
+                r = range(0, stop)
+            elif stop is None:
+                r = range(start, len(obj))
+            else:
+                r = range(start, stop)
+            for i in r:
+                selectors[i] = True
+        yield from itertools.compress(obj, selectors)
 
 
 class Transformer(lark.Transformer):
@@ -200,28 +221,22 @@ class Transformer(lark.Transformer):
     def element(self, ranges):
         if not ranges:
             return WildcardElement.create()
-        elif ranges == [(0, -1)]:
-            return WildcardElement.create()
-        else:
-            return Element.create(ranges=ranges)
 
-    def element_range(self, indexes):
-        n_indexes = len(indexes)
-        if n_indexes == 0:
-            start = stop = None
-        elif n_indexes == 1:
-            start = indexes[0]
-            if start == -1:
-                stop = None
-            else:
-                stop = start + 1
-        else:
-            start, stop = indexes
-        return start, stop
+        if len(ranges) == 1:
+            if len(ranges[0]) == 1:
+                return Element.create(index=ranges[0][0])
+            if ranges[0] == (0, None):  # 0 to last
+                return WildcardElement.create()
+
+        ranges = [normalize_range(r) for r in ranges]
+        return RangesElement.create(ranges=ranges)
+
+    def element_range(self, indices):
+        return tuple(indices)
 
     def element_index(self, children):
         if not children:
-            return -1  # last
+            return None  # last
         (s,) = children
         return int(s)
 
@@ -230,3 +245,15 @@ class Transformer(lark.Transformer):
 
     def __getattr__(self, name):
         raise NotImplementedError(f"no transformer for {name}")
+
+
+def normalize_range(indices):
+    try:
+        start, stop = indices
+    except ValueError:
+        (n,) = indices
+        if n is None:
+            start, stop = -2, -1
+        else:
+            start, stop = n, n + 1
+    return start, stop

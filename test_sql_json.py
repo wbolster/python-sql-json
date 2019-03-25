@@ -44,6 +44,10 @@ def test_path_members():
 
 
 def test_path_elements():
-    doc = {"items": [1, 2, 3]}
-    # assert sql_json.query("$.items[0]", doc) == 1
-    # assert sql_json.query("$.items[*]", doc) == [1, 2, 3]
+    doc = {"items": [1, 2, 3, 4, 5]}
+    assert sql_json.query("$.items[0]", doc) == 1
+    assert sql_json.query("$.items[*]", doc) == [1, 2, 3, 4, 5]
+    assert sql_json.query("$.items[0 to last]", doc) == [1, 2, 3, 4, 5]
+    assert sql_json.query("$.items[0 to 2]", doc) == [1, 2]
+    assert sql_json.query("$.items[1 to 4]", doc) == [2, 3, 4]
+    assert sql_json.query("$.items[4 to last]", doc) == [5]
