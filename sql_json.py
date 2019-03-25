@@ -117,14 +117,17 @@ class Step(ASTNode):
 
 
 @attr.s(slots=True)
+class WildcardMember(Step):
+    def __call__(self, obj):
+        yield from obj.values()
+
+
+@attr.s(slots=True)
 class Member(Step):
     name = attr.ib()
 
     def __call__(self, obj):
-        if self.name is None:  # wildcard
-            yield from obj.values()
-        else:
-            yield obj[self.name]
+        yield obj[self.name]
 
 
 @attr.s(slots=True)
@@ -139,12 +142,16 @@ class Element(Step):
                 raise ValueError(f"invalid range: {start} to {stop}")
 
     def __call__(self, obj):
-        if self.ranges is None:  # wildcard
-            yield from obj
         selectors = [False for _ in range(len(obj))]
         for start, stop in self.ranges:
             ...
         yield from itertools.compress(obj, selectors)
+
+
+@attr.s(slots=True)
+class WildcardElement(Step):
+    def __call__(self, obj):
+        yield from obj
 
 
 class Transformer(lark.Transformer):
@@ -175,10 +182,10 @@ class Transformer(lark.Transformer):
 
     def member(self, names):
         if not names:
-            name = None  # wildcard
+            return WildcardMember.create()
         else:
             (name,) = names
-        return Member.create(name=name)
+            return Member.create(name=name)
 
     def member_name(self, children):
         (name,) = children
@@ -192,8 +199,11 @@ class Transformer(lark.Transformer):
 
     def element(self, ranges):
         if not ranges:
-            ranges = None  # wildcard
-        return Element.create(ranges=ranges)
+            return WildcardElement.create()
+        elif ranges == [(0, -1)]:
+            return WildcardElement.create()
+        else:
+            return Element.create(ranges=ranges)
 
     def element_range(self, indexes):
         n_indexes = len(indexes)
