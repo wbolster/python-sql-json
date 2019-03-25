@@ -62,7 +62,14 @@ def parse(input):
 
 @attr.s(slots=True)
 class ASTNode:
-    pass
+    @classmethod
+    def create(cls, **kwargs):
+        instance = cls(**kwargs)
+        instance.validate()
+        return instance
+
+    def validate(self):
+        pass
 
 
 class PathMode(enum.Enum):
@@ -112,7 +119,7 @@ class Transformer(lark.Transformer):
         return path
 
     def path(self, steps):
-        return Path(steps=steps)
+        return Path.create(steps=steps)
 
     def mode(self, children):
         (s,) = children
@@ -123,7 +130,7 @@ class Transformer(lark.Transformer):
             name = None  # wildcard
         else:
             (name,) = names
-        return Member(name=name)
+        return Member.create(name=name)
 
     def member_name(self, children):
         (name,) = children
@@ -138,7 +145,7 @@ class Transformer(lark.Transformer):
     def element(self, ranges):
         if not ranges:
             ranges = None  # wildcard
-        return Element(ranges=ranges)
+        return Element.create(ranges=ranges)
 
     def element_range(self, indexes):
         n_indexes = len(indexes)
