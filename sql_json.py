@@ -1,4 +1,5 @@
 import enum
+import itertools
 import json
 
 import attr
@@ -46,7 +47,7 @@ grammar = r"""
 parser = lark.Lark(grammar, parser="lalr", start="json_path", debug=True)
 
 
-def parse(input):
+def compile(input):
     tree = parser.parse(input)
     print(tree.pretty())
     try:
@@ -87,6 +88,33 @@ class Path(ASTNode):
     steps = attr.ib(factory=list)
     type = attr.ib(default=PathType.absolute)
     mode = attr.ib(default=PathMode.lax)
+
+    def __call__(self, context):
+        """Evaluate this path against a context document."""
+        objs = [context]
+        for step in self.steps:
+            objs = itertools.chain.from_iterable(expand_step(step, obj) for obj in objs)
+        results = list(objs)
+        return results if self.has_wildcards else results[0]
+
+    @property
+    def has_wildcards(self):
+        return any(
+            isinstance(step, (Element, Member)) and step.name is None
+            for step in self.steps
+        )
+
+
+def expand_step(step, obj):
+    if isinstance(step, Member):
+        if step.name is None:
+            # Single object
+            yield obj[step.name]
+        else:
+            # Wildcard
+            yield from obj.values()
+    else:
+        raise NotImplementedError
 
 
 @attr.s(slots=True)

@@ -32,5 +32,11 @@ TEST_INPUTS = [
 def test_sql_json(test_input):
     print()
     print(test_input)
-    _tree = sql_json.parse(test_input)
+    _tree = sql_json.compile(test_input)
     # __import__("IPython").embed()  # FIXME
+
+
+def test_query():
+    doc = {"foo": {"bar": {"baz": 123}}}
+    query = sql_json.compile("$.foo.bar.baz")
+    assert query(doc) == 123
