@@ -98,6 +98,13 @@ class Member(ASTNode):
 class Element(ASTNode):
     ranges = attr.ib()
 
+    def validate(self):
+        if self.ranges is None:
+            return
+        for start, end in self.ranges:
+            if start is not None and end is not None and start > end:
+                raise ValueError(f"invalid range: {start} to {end}")
+
 
 class Transformer(lark.Transformer):
     def json_path(self, children):
