@@ -13,15 +13,11 @@ grammar = r"""
 
     %ignore WS
 
-    json_path: [mode] absolute_path
+    query: [mode] "$" path
     mode: MODE
     MODE: "strict" | "lax"
 
-    absolute_path: "$" path
-    relative_path: "@" path
-    path: step*
-
-    ?step: member | element | filter | method
+    path: (member | element | filter)* method?
 
     member: "." ("*" | member_name | member_name_quoted)
     member_name: CNAME
@@ -44,7 +40,7 @@ grammar = r"""
 # todo: json string Unicode escapes
 # todo: match json string semantics (\n and other escapes)
 
-parser = lark.Lark(grammar, parser="lalr", start="json_path", debug=True)
+parser = lark.Lark(grammar, parser="lalr", start="query", debug=True)
 
 
 def compile(input):
@@ -65,19 +61,7 @@ def query(query, context):
     return compile(query)(context)
 
 
-@attr.s(slots=True)
-class ASTNode:
-    @classmethod
-    def create(cls, **kwargs):
-        instance = cls(**kwargs)
-        instance.validate()
-        return instance
-
-    def validate(self):
-        pass
-
-
-class PathMode(enum.Enum):
+class QueryMode(enum.Enum):
     lax = enum.auto()
     strict = enum.auto()
 
@@ -87,17 +71,27 @@ class PathType(enum.Enum):
     relative = enum.auto()
 
 
-@attr.s(slots=True)
-class Path(ASTNode):
-    steps = attr.ib(factory=list)
-    type = attr.ib(default=PathType.absolute)
-    mode = attr.ib(default=PathMode.lax)
+@attr.s(kw_only=True)
+class Query:
+    mode = attr.ib(default=QueryMode.lax)
+    path = attr.ib()
 
     def __call__(self, context):
-        """Evaluate this path against a context document."""
+        return self.path(context, mode=self.mode)
+
+
+@attr.s(kw_only=True)
+class Path:
+    steps = attr.ib(factory=list)
+    type = attr.ib(default=PathType.absolute)
+
+    def __call__(self, context, *, mode):
         objs = [context]
         for step in self.steps:
-            objs = list(itertools.chain.from_iterable(step(obj) for obj in objs))
+            new = []
+            for obj in objs:
+                new.extend(step(obj))
+            objs = new
 
         if self.has_scalar_result:
             (result,) = objs
@@ -110,13 +104,13 @@ class Path(ASTNode):
         return all(isinstance(step, (Member, Element)) for step in self.steps)
 
 
-@attr.s(slots=True)
-class Step(ASTNode):
+@attr.s(kw_only=True)
+class Step:
     def __call__(self, obj):
         raise NotImplementedError
 
 
-@attr.s(slots=True)
+@attr.s(kw_only=True)
 class Member(Step):
     name = attr.ib()
 
@@ -125,14 +119,14 @@ class Member(Step):
         yield obj[self.name]
 
 
-@attr.s(slots=True)
+@attr.s(kw_only=True)
 class WildcardMember(Step):
     def __call__(self, obj):
         assert isinstance(obj, dict)
         yield from obj.values()
 
 
-@attr.s(slots=True)
+@attr.s(kw_only=True)
 class Element(Step):
     index = attr.ib()
 
@@ -141,20 +135,21 @@ class Element(Step):
         yield obj[self.index]
 
 
-@attr.s(slots=True)
+@attr.s(kw_only=True)
 class WildcardElement(Step):
     def __call__(self, obj):
         assert isinstance(obj, list)
         yield from obj
 
 
-@attr.s(slots=True)
+@attr.s(kw_only=True)
 class RangesElement(Step):
     ranges = attr.ib()
 
-    def validate(self):
-        assert self.ranges
-        for start, stop in self.ranges:
+    @ranges.validator
+    def validate(self, attribute, value):
+        assert value
+        for start, stop in value:
             if start is not None and stop is not None and stop != -1 and start > stop:
                 raise ValueError(f"invalid range: {start} to {stop}")
 
@@ -176,37 +171,27 @@ class RangesElement(Step):
 
 
 class Transformer(lark.Transformer):
-    def json_path(self, children):
-        if isinstance(children[0], PathMode):
+    def query(self, children):
+        if isinstance(children[0], QueryMode):
             mode, path = children
-            path.mode = mode
         else:
             (path,) = children
-        return path
-
-    def absolute_path(self, children):
-        (path,) = children
-        path.type = PathType.absolute
-        return path
-
-    def relative(self, children):
-        (path,) = children
-        path.type = PathType.relative
-        return path
+            mode = QueryMode.lax
+        return Query(path=path, mode=mode)
 
     def path(self, steps):
-        return Path.create(steps=steps)
+        return Path(steps=steps)
 
     def mode(self, children):
         (s,) = children
-        return PathMode[s]
+        return QueryMode[s]
 
     def member(self, names):
         if not names:
-            return WildcardMember.create()
+            return WildcardMember()
         else:
             (name,) = names
-            return Member.create(name=name)
+            return Member(name=name)
 
     def member_name(self, children):
         (name,) = children
@@ -220,16 +205,16 @@ class Transformer(lark.Transformer):
 
     def element(self, ranges):
         if not ranges:
-            return WildcardElement.create()
+            return WildcardElement()
 
         if len(ranges) == 1:
             if len(ranges[0]) == 1:
-                return Element.create(index=ranges[0][0])
+                return Element(index=ranges[0][0])
             if ranges[0] == (0, None):  # 0 to last
-                return WildcardElement.create()
+                return WildcardElement()
 
         ranges = [normalize_range(r) for r in ranges]
-        return RangesElement.create(ranges=ranges)
+        return RangesElement(ranges=ranges)
 
     def element_range(self, indices):
         return tuple(indices)
