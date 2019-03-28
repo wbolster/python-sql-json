@@ -13,7 +13,7 @@ grammar = r"""
 
     %ignore WS
 
-    query: [mode] "$" path
+    query: mode? "$" path
     mode: MODE
     MODE: "strict" | "lax"
 
@@ -182,23 +182,23 @@ class Transformer(lark.Transformer):
     def path(self, steps):
         return Path(steps=steps)
 
-    def mode(self, children):
-        (s,) = children
+    @lark.v_args(inline=True)
+    def mode(self, s):
         return QueryMode[s]
 
-    def member(self, names):
-        if not names:
+    @lark.v_args(inline=True)
+    def member(self, name=None):
+        if name is None:
             return WildcardMember()
         else:
-            (name,) = names
             return Member(name=name)
 
-    def member_name(self, children):
-        (name,) = children
+    @lark.v_args(inline=True)
+    def member_name(self, name):
         return str(name)
 
-    def member_name_quoted(self, children):
-        (quoted_name,) = children
+    @lark.v_args(inline=True)
+    def member_name_quoted(self, quoted_name):
         name, pos = json.decoder.scanstring(quoted_name, 1)
         assert pos == len(quoted_name)
         return name
@@ -219,13 +219,14 @@ class Transformer(lark.Transformer):
     def element_range(self, indices):
         return tuple(indices)
 
-    def element_index(self, children):
-        if not children:
+    @lark.v_args(inline=True)
+    def element_index(self, s=None):
+        if s is None:
             return None  # last
-        (s,) = children
         return int(s)
 
-    def method(self, children):
+    @lark.v_args(inline=True)
+    def method(self, name):
         return "somemethod"  # todo
 
     def __getattr__(self, name):
