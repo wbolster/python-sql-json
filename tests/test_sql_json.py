@@ -28,6 +28,15 @@ TEST_INPUTS = [
     "$.size()",
 ]
 
+INVALID_INPUTS = [
+    "x",
+    "$[]",
+    "$[foo]",
+    '$."unclosed string',
+    "$.foo[2 to 1]",
+    # "$.foo[last to 1]",  # todo
+]
+
 
 @pytest.mark.parametrize("test_input", TEST_INPUTS)
 def test_sql_json(test_input):
@@ -35,6 +44,12 @@ def test_sql_json(test_input):
     print(test_input)
     _tree = sql_json.compile(test_input)
     # __import__("IPython").embed()  # FIXME
+
+
+@pytest.mark.parametrize("s", INVALID_INPUTS)
+def test_invalid(s):
+    with pytest.raises(sql_json.QueryError):
+        sql_json.compile(s)
 
 
 def test_path_members():

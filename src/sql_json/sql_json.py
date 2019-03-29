@@ -17,16 +17,22 @@ grammar = pkg_resources.resource_string(__package__, "sql_json.lark").decode()
 parser = lark.Lark(grammar, parser="lalr", start="query", debug=True)
 
 
+class QueryError(Exception):
+    pass
+
+
 def compile(input):
-    tree = parser.parse(input)
+    try:
+        tree = parser.parse(input)
+    except lark.UnexpectedInput as exc:
+        raise QueryError(f"invalid query: {exc}") from exc
     print(tree.pretty())
     try:
         transformed = Transformer().transform(tree)
     except lark.exceptions.VisitError as exc:
-        if exc.__context__ is not None:
-            raise exc.__context__ from None
-        else:
-            raise
+        # The VisitError masks the underlying cause. Fortunately the original
+        # exception is available from .context, so use that as the direct cause.
+        raise QueryError(f"invalid query: {exc.__context__}") from exc.__context__
     print(transformed)
     return transformed
 

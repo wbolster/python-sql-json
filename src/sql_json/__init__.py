@@ -1,1 +1,1 @@
-from .sql_json import compile, query  # noqa: F401
+from .sql_json import compile, query, QueryError  # noqa: F401
