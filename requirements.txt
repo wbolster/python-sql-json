@@ -1,3 +1,2 @@
 attrs
 lark-parser
-pytest

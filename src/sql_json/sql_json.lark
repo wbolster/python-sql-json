@@ -1,0 +1,25 @@
+%import common.CNAME
+%import common.ESCAPED_STRING
+%import common.INT
+%import common.WS
+
+%ignore WS
+
+query: mode? "$" path
+mode: MODE
+MODE: "strict" | "lax"
+
+path: (member | element | filter)* method?
+
+member: "." ("*" | member_name | member_name_quoted)
+member_name: CNAME
+member_name_quoted: ESCAPED_STRING
+
+element: "[" ("*" | _element_ranges) "]"
+_element_ranges: element_range ("," element_range)*
+element_range: element_index ["to" element_index]
+element_index: INT | "last"
+
+filter: "TODO"
+
+method: "." CNAME "()"

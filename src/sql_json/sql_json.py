@@ -4,34 +4,7 @@ import json
 
 import attr
 import lark
-
-grammar = r"""
-    %import common.CNAME
-    %import common.ESCAPED_STRING
-    %import common.INT
-    %import common.WS
-
-    %ignore WS
-
-    query: mode? "$" path
-    mode: MODE
-    MODE: "strict" | "lax"
-
-    path: (member | element | filter)* method?
-
-    member: "." ("*" | member_name | member_name_quoted)
-    member_name: CNAME
-    member_name_quoted: ESCAPED_STRING
-
-    element: "[" ("*" | _element_ranges) "]"
-    _element_ranges: element_range ("," element_range)*
-    element_range: element_index ["to" element_index]
-    element_index: INT | "last"
-
-    filter: "TODO"
-
-    method: "." CNAME "()"
-    """
+import pkg_resources
 
 # todo: signed numbers
 # todo: string quoted members
@@ -40,6 +13,7 @@ grammar = r"""
 # todo: json string Unicode escapes
 # todo: match json string semantics (\n and other escapes)
 
+grammar = pkg_resources.resource_string(__package__, "sql_json.lark").decode()
 parser = lark.Lark(grammar, parser="lalr", start="query", debug=True)
 
 
