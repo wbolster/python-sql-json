@@ -15,8 +15,7 @@ member: "." ("*" | member_name | member_name_quoted)
 member_name: CNAME
 member_name_quoted: ESCAPED_STRING
 
-element: "[" ("*" | _element_ranges) "]"
-_element_ranges: element_range ("," element_range)*
+element: "[" ("*" | element_range ("," element_range)*) "]"
 element_range: element_index ["to" element_index]
 element_index: INT | "last"
 
