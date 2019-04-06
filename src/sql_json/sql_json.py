@@ -77,15 +77,7 @@ class Path:
                 new.extend(step(obj))
             objs = new
 
-        if self.has_scalar_result:
-            (result,) = objs
-            return result
-        else:
-            return objs
-
-    @property
-    def has_scalar_result(self):
-        return all(isinstance(step, (Member, Element)) for step in self.steps)
+        return objs
 
 
 @attr.s(kw_only=True)
