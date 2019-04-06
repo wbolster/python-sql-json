@@ -23,6 +23,7 @@ TEST_INPUTS = [
     "$[0 to last]",
     "$[0, 2, last]",
     "$[0, 2 to last]",
+    "$[last to last]",
     "$[3].bar[*].baz",
     "$[*].bar[2 to 3, 4, last].baz",
     "$.size()",
@@ -34,7 +35,7 @@ INVALID_INPUTS = [
     "$[foo]",
     '$."unclosed string',
     "$.foo[2 to 1]",
-    # "$.foo[last to 1]",  # todo
+    "$.foo[last to 1]",
 ]
 
 
@@ -55,12 +56,12 @@ def test_invalid(s):
 def test_path_members():
     doc = {"foo": {"bar": {"baz": 123}}}
     query = "$.foo.bar.baz"
-    assert sql_json.query(query, doc) == 123
+    assert sql_json.query(query, doc) == [123]
 
 
 def test_path_elements():
     doc = {"items": [1, 2, 3, 4, 5]}
-    assert sql_json.query("$.items[0]", doc) == 1
+    assert sql_json.query("$.items[0]", doc) == [1]
     assert sql_json.query("$.items[*]", doc) == [1, 2, 3, 4, 5]
     assert sql_json.query("$.items[0 to last]", doc) == [1, 2, 3, 4, 5]
     assert sql_json.query("$.items[0 to 2]", doc) == [1, 2]

@@ -15,8 +15,10 @@ member: "." ("*" | member_name | member_name_quoted)
 member_name: CNAME
 member_name_quoted: ESCAPED_STRING
 
-element: "[" ("*" | element_range ("," element_range)*) "]"
-element_range: element_index ["to" element_index]
+element: "[" ("*" | element_single_or_range ("," element_single_or_range)*) "]"
+element_single_or_range: element_single | element_range
+element_single: element_index
+element_range: element_index "to" element_index
 element_index: INT | "last"
 
 filter: "TODO"

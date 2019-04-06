@@ -103,15 +103,6 @@ class WildcardMember(Step):
 
 
 @attr.s(kw_only=True)
-class Element(Step):
-    index = attr.ib()
-
-    def __call__(self, obj):
-        assert isinstance(obj, list)
-        yield obj[self.index]
-
-
-@attr.s(kw_only=True)
 class WildcardElement(Step):
     def __call__(self, obj):
         assert isinstance(obj, list)
@@ -121,13 +112,6 @@ class WildcardElement(Step):
 @attr.s(kw_only=True)
 class RangesElement(Step):
     ranges = attr.ib()
-
-    @ranges.validator
-    def validate(self, attribute, value):
-        assert value
-        for start, stop in value:
-            if start is not None and stop is not None and stop != -1 and start > stop:
-                raise ValueError(f"invalid range: {start} to {stop}")
 
     def __call__(self, obj):
         # todo how to deal with out of range values?
@@ -182,24 +166,35 @@ class Transformer(lark.Transformer):
     def element(self, ranges):
         if not ranges:
             return WildcardElement()
-
-        if len(ranges) == 1:
-            if len(ranges[0]) == 1:
-                return Element(index=ranges[0][0])
-            if ranges[0] == (0, None):  # 0 to last
-                return WildcardElement()
-
-        ranges = [normalize_range(r) for r in ranges]
         return RangesElement(ranges=ranges)
 
-    def element_range(self, indices):
-        return tuple(indices)
+    @lark.v_args(inline=True)
+    def element_single_or_range(self, x):
+        return x
+
+    @lark.v_args(inline=True)
+    def element_single(self, index):
+        if index is None:  # last
+            return (-1, None)
+        else:
+            return index, index + 1
+
+    @lark.v_args(inline=True)
+    def element_range(self, start, stop):
+        if start is None:
+            if stop is None:  # e.g. $[last to last]
+                start = -1
+            else:  # e.g. $[last to 5]
+                raise ValueError(f"invalid range: last to {stop}")
+        elif stop is not None and start > stop:
+            raise ValueError(f"invalid range: {start} to {stop}")
+        return start, stop
 
     @lark.v_args(inline=True)
     def element_index(self, s=None):
         if s is None:
-            return None  # last
-        return int(s)
+            return None  # e.g. $[last]
+        return int(s)  # e.g. $[4]
 
     @lark.v_args(inline=True)
     def method(self, name):
@@ -207,15 +202,3 @@ class Transformer(lark.Transformer):
 
     def __getattr__(self, name):
         raise NotImplementedError(f"no transformer for {name}")
-
-
-def normalize_range(indices):
-    try:
-        start, stop = indices
-    except ValueError:
-        (n,) = indices
-        if n is None:
-            start, stop = -2, -1
-        else:
-            start, stop = n, n + 1
-    return start, stop
