@@ -6,8 +6,7 @@
 %ignore WS
 
 query: mode? "$" path
-mode: MODE
-MODE: "strict" | "lax"
+!mode: "strict" | "lax"
 
 path: (member | element | filter)* method?
 
