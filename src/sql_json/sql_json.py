@@ -25,6 +25,7 @@ class QueryError(Exception):
 
 
 def compile(input):
+    print(input)
     try:
         tree = parser.parse(input)
     except lark.UnexpectedInput as exc:
