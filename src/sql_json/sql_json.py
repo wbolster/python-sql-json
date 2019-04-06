@@ -12,6 +12,9 @@ import pkg_resources
 # todo: $."$varname" uses the variable name as lookup key
 # todo: json string Unicode escapes
 # todo: match json string semantics (\n and other escapes)
+# todo: arithmetic expressions
+# todo: list subscripts can be expressions
+# todo: a lot more :)
 
 grammar = pkg_resources.resource_string(__package__, "sql_json.lark").decode()
 parser = lark.Lark(grammar, parser="lalr", start="query", debug=True)
