@@ -13,6 +13,7 @@ import pkg_resources
 # todo: json string Unicode escapes
 # todo: match json string semantics (\n and other escapes)
 # todo: arithmetic expressions
+# todo: case insensitive keywords? (allowed at all?)
 # todo: list subscripts can be expressions
 # todo: a lot more :)
 
