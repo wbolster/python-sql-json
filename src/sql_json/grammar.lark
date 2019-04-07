@@ -1,0 +1,140 @@
+// JSON/SQL path language, based on SQL:2016, ISO/IEC 9075-2
+
+%import common.CNAME
+%import common.ESCAPED_STRING
+%import common.SIGNED_NUMBER
+%import common.WS
+
+%ignore WS
+
+BOOL: "true" | "false"
+
+literal: null_literal
+       | boolean_literal
+       | string_literal
+       | numeric_literal
+
+null_literal: "null"
+boolean_literal: BOOL
+string_literal: ESCAPED_STRING
+numeric_literal: SIGNED_NUMBER
+
+identifier: context_variable | named_variable | key_name
+
+context_variable: "$"
+
+named_variable: "$" CNAME
+
+key_name: CNAME
+
+expression: mode? wff
+
+!mode: "strict" | "lax"
+
+primary: literal
+       | variable
+       | "(" wff ")"
+
+!variable: context_variable
+         | named_variable
+         | "@"
+         | last_subscript
+
+last_subscript: "last"
+
+accessor_expression: primary
+                   | accessor_expression accessor_op
+
+accessor_op: member_accessor
+           | wildcard_member_accessor
+           | array_accessor
+           | wildcard_array_accessor
+           | filter_expression
+           | item_method
+
+member_accessor: "." key_name
+               | "." string_literal
+
+wildcard_member_accessor: "." "*"
+
+array_accessor: "[" subscript_list "]"
+
+subscript_list: subscript ( "," subscript )*
+
+subscript: wff
+         | wff "to" wff
+
+wildcard_array_accessor: "[" "*" "]"
+
+filter_expression: "?" "(" predicate ")"
+
+item_method: "." method
+
+!method: "type" "(" ")"
+       | "size" "(" ")"
+       | "double" "(" ")"
+       | "ceiling" "(" ")"
+       | "floor" "(" ")"
+       | "abs" "(" ")"
+       | "datetime" "(" datetime_template? ")"
+       | "keyvalue" "(" ")"
+
+datetime_template: string_literal
+
+!unary_expression: accessor_expression
+                 | "+" unary_expression
+                 | "-" unary_expression
+
+!multiplicative_expression: unary_expression
+                          | multiplicative_expression "*" unary_expression
+                          | multiplicative_expression "/" unary_expression
+                          | multiplicative_expression "%" unary_expression
+
+!additive_expression: multiplicative_expression
+                    | additive_expression "+" multiplicative_expression
+                    | additive_expression "-" multiplicative_expression
+
+wff: additive_expression
+
+predicate_primary: delimited_predicate
+                 | non_delimited_predicate
+
+delimited_predicate: exists_predicate
+                   | "(" predicate ")"
+
+non_delimited_predicate: comparison_predicate
+                       | like_regex_predicate
+                       | starts_with_predicate
+                       | unknown_predicate
+
+exists_predicate: "exists" "(" wff ")"
+
+comparison_predicate: wff COMP_OP wff
+
+COMP_OP: "=" | "<>" | "<=" | ">=" | "<" | ">"
+
+like_regex_predicate: wff "like_regex" like_regex_pattern [ "flag" like_regex_flags ]
+
+like_regex_pattern: string_literal
+
+like_regex_flags: string_literal
+
+starts_with_predicate: starts_with_whole "starts" "with" starts_with_initial
+
+starts_with_whole: wff
+
+starts_with_initial: string_literal
+                   | named_variable
+
+unknown_predicate: "(" predicate ")" "is" "unknown"
+
+boolean_negation: predicate_primary
+                | "!" delimited_predicate
+
+boolean_conjunction: boolean_negation
+                   | boolean_conjunction "&&" boolean_negation
+
+boolean_disjunction: boolean_conjunction
+                   | boolean_disjunction "||" boolean_conjunction
+
+predicate: boolean_disjunction
