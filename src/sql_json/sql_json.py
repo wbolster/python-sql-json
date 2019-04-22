@@ -1,6 +1,8 @@
+import ast
 import enum
 import itertools
 import json
+import operator
 
 import attr
 import lark
@@ -20,6 +22,14 @@ import pkg_resources
 
 grammar = pkg_resources.resource_string(__package__, "grammar.lark").decode()
 parser = lark.Lark(grammar, parser="lalr", start="expression", debug=True)
+
+OPERATOR_MAP = {
+    "+": operator.add,
+    "-": operator.sub,
+    "*": operator.mul,
+    "/": operator.truediv,
+    "%": operator.mod,
+}
 
 
 def query(query, context):
@@ -71,6 +81,15 @@ class Transformer(lark.Transformer):
     accessor_op = _return_expr
     primary = _return_expr
     variable = _return_expr
+    wff = _return_expr
+
+    def expression(self, args):
+        try:
+            mode, expr = args
+        except ValueError:
+            (expr,) = args
+            mode = QueryMode.lax
+        return Query(expr=expr, mode=mode)
 
     @lark.v_args(inline=True)
     def context_variable(self):
@@ -82,11 +101,13 @@ class Transformer(lark.Transformer):
 
     @lark.v_args(inline=True)
     def string_literal(self, name):
+        __import__("pdb").set_trace()  # FIXME
+        # todo: escaping?
         return str(name)
 
     @lark.v_args(inline=True)
     def member_accessor(self, name):
-        return MemberAccessor(name=name)
+        return MemberAccessor(member=name)
 
     @lark.v_args(inline=True)
     def accessor_expression(self, expr, accessor=None):
@@ -96,19 +117,39 @@ class Transformer(lark.Transformer):
         accessor.expr = expr
         return accessor
 
+    def unary_expression(self, args):
+        try:
+            op, expr = args
+            assert op in ("-", "+")
+            if op == "-":
+                expr = MinusOperator(expr=expr)
+        except ValueError:
+            (expr,) = args
+        return expr
+
+    def multiplicative_expression(self, args):
+        try:
+            left, op, right = args
+            expr = BinaryOperator(left=left, op=OPERATOR_MAP[op], right=right)
+        except ValueError:
+            (expr,) = args
+        return expr
+
+    additive_expression = multiplicative_expression
+
     @lark.v_args(inline=True)
-    def _(self, name):
+    def literal(self, value):
+        expr = Constant(value=value)
+        return expr
+
+    @lark.v_args(inline=True)
+    def numeric_literal(self, s):
+        return ast.literal_eval(s)
+
+    @lark.v_args(inline=True)
+    def _(self, *args):
         __import__("pdb").set_trace()  # FIXME
         assert 0
-
-    # def query(self, children):
-    #     # todo
-    #     if isinstance(children[0], QueryMode):
-    #         mode, path = children
-    #     else:
-    #         (path,) = children
-    #         mode = QueryMode.lax
-    #     return Query(path=path, mode=mode)
 
     # def path(self, steps):
     #     # todo
@@ -201,6 +242,11 @@ class Query(Node):
 
 
 @attr.s(kw_only=True)
+class Constant(Node):
+    value = attr.ib()
+
+
+@attr.s(kw_only=True)
 class Variable(Node):
     pass
 
@@ -222,11 +268,11 @@ class Accessor(Node):
 
 @attr.s(kw_only=True)
 class MemberAccessor(Accessor):
-    name = attr.ib()
+    member = attr.ib()
 
     def __call__(self, obj):
         assert isinstance(obj, dict)
-        yield obj[self.name]
+        yield obj[self.member]
 
 
 @attr.s(kw_only=True)
@@ -266,8 +312,12 @@ class WildcardArrayAccessor(Accessor):
 
 @attr.s(kw_only=True)
 class UnaryOperator(Node):
-    op = attr.ib()
-    value = attr.ib()
+    pass
+
+
+@attr.s(kw_only=True)
+class MinusOperator(UnaryOperator):
+    expr = attr.ib()
 
 
 @attr.s(kw_only=True)
