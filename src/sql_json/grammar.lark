@@ -70,16 +70,24 @@ filter_expression: "?" "(" predicate ")"
 
 item_method: "." method
 
-!method: "type" "(" ")"
-       | "size" "(" ")"
-       | "double" "(" ")"
-       | "ceiling" "(" ")"
-       | "floor" "(" ")"
-       | "abs" "(" ")"
-       | "datetime" "(" datetime_template? ")"
-       | "keyvalue" "(" ")"
+method: method_type
+      | method_size
+      | method_double
+      | method_ceiling
+      | method_floor
+      | method_abs
+      | method_datetime
+      | method_keyvalue
 
+method_type: "type" "(" ")"
+method_size: "size" "(" ")"
+method_double: "double" "(" ")"
+method_ceiling: "ceiling" "(" ")"
+method_floor: "floor" "(" ")"
+method_abs: "abs" "(" ")"
+method_datetime: "datetime" "(" datetime_template? ")"
 datetime_template: string_literal
+method_keyvalue: "keyvalue" "(" ")"
 
 !unary_expression: accessor_expression
                  | "+" unary_expression
