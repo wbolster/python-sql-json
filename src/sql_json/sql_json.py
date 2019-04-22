@@ -92,6 +92,10 @@ class Transformer(lark.Transformer):
         return Query(expr=expr, mode=mode)
 
     @lark.v_args(inline=True)
+    def mode(self, s):
+        return QueryMode[s]
+
+    @lark.v_args(inline=True)
     def context_variable(self):
         return ContextVariable()
 
@@ -100,10 +104,8 @@ class Transformer(lark.Transformer):
         return str(name)
 
     @lark.v_args(inline=True)
-    def string_literal(self, name):
-        __import__("pdb").set_trace()  # FIXME
-        # todo: escaping?
-        return str(name)
+    def string_literal(self, value):
+        return json.loads(value)
 
     @lark.v_args(inline=True)
     def member_accessor(self, name):
@@ -156,29 +158,9 @@ class Transformer(lark.Transformer):
     #     return Path(steps=steps)
 
     # @lark.v_args(inline=True)
-    # def mode(self, s):
-    #     # todo
-    #     return QueryMode[s]
-
-    # @lark.v_args(inline=True)
-    # def member(self, name=None):
-    #     # todo
-    #     if name is None:
-    #         return WildcardMember()
-    #     else:
-    #         return Member(name=name)
-
-    # @lark.v_args(inline=True)
     # def member_name(self, name):
     #     # todo
     #     return str(name)
-
-    # @lark.v_args(inline=True)
-    # def member_name_quoted(self, quoted_name):
-    #     # todo
-    #     name, pos = json.decoder.scanstring(quoted_name, 1)
-    #     assert pos == len(quoted_name)
-    #     return name
 
     # def element(self, ranges):
     #     # todo

@@ -27,9 +27,9 @@ named_variable: "$" CNAME
 
 key_name: CNAME
 
-expression: MODE? wff
+expression: mode? wff
 
-MODE: "strict" | "lax"
+!mode: "strict" | "lax"
 
 primary: literal
        | variable
