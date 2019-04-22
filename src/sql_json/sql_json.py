@@ -17,12 +17,13 @@ import pkg_resources
 # todo: list subscripts can be expressions
 # todo: a lot more :)
 
-grammar = pkg_resources.resource_string(__package__, "sql_json.lark").decode()
-parser = lark.Lark(grammar, parser="lalr", start="query", debug=True)
+
+grammar = pkg_resources.resource_string(__package__, "grammar.lark").decode()
+parser = lark.Lark(grammar, parser="lalr", start="expression", debug=True)
 
 
-class QueryError(Exception):
-    pass
+def query(query, context):
+    return compile(query)(context)
 
 
 def compile(input):
@@ -42,8 +43,145 @@ def compile(input):
     return transformed
 
 
-def query(query, context):
-    return compile(query)(context)
+class Error(Exception):
+    """
+    Base SQL/JSON exception class.
+    """
+
+    pass
+
+
+class QueryError(Error):
+    """
+    Exception raised for problematic queries.
+    """
+
+    pass
+
+
+class Transformer(lark.Transformer):
+    def __getattr__(self, name):
+        raise NotImplementedError(f"no transformer for {name}")
+
+    @lark.v_args(inline=True)
+    def _return_expr(self, expr):
+        """Helper to return the child expression."""
+        return expr
+
+    accessor_op = _return_expr
+    primary = _return_expr
+    variable = _return_expr
+
+    @lark.v_args(inline=True)
+    def context_variable(self):
+        return ContextVariable()
+
+    @lark.v_args(inline=True)
+    def key_name(self, name):
+        return str(name)
+
+    @lark.v_args(inline=True)
+    def string_literal(self, name):
+        return str(name)
+
+    @lark.v_args(inline=True)
+    def member_accessor(self, name):
+        return MemberAccessor(name=name)
+
+    @lark.v_args(inline=True)
+    def accessor_expression(self, expr, accessor=None):
+        if accessor is None:
+            return expr
+
+        accessor.expr = expr
+        return accessor
+
+    @lark.v_args(inline=True)
+    def _(self, name):
+        __import__("pdb").set_trace()  # FIXME
+        assert 0
+
+    # def query(self, children):
+    #     # todo
+    #     if isinstance(children[0], QueryMode):
+    #         mode, path = children
+    #     else:
+    #         (path,) = children
+    #         mode = QueryMode.lax
+    #     return Query(path=path, mode=mode)
+
+    # def path(self, steps):
+    #     # todo
+    #     return Path(steps=steps)
+
+    # @lark.v_args(inline=True)
+    # def mode(self, s):
+    #     # todo
+    #     return QueryMode[s]
+
+    # @lark.v_args(inline=True)
+    # def member(self, name=None):
+    #     # todo
+    #     if name is None:
+    #         return WildcardMember()
+    #     else:
+    #         return Member(name=name)
+
+    # @lark.v_args(inline=True)
+    # def member_name(self, name):
+    #     # todo
+    #     return str(name)
+
+    # @lark.v_args(inline=True)
+    # def member_name_quoted(self, quoted_name):
+    #     # todo
+    #     name, pos = json.decoder.scanstring(quoted_name, 1)
+    #     assert pos == len(quoted_name)
+    #     return name
+
+    # def element(self, ranges):
+    #     # todo
+    #     if not ranges:
+    #         return WildcardElement()
+    #     return RangesElement(ranges=ranges)
+
+    # @lark.v_args(inline=True)
+    # def element_single_or_range(self, x):
+    #     # todo
+    #     return x
+
+    # @lark.v_args(inline=True)
+    # def element_single(self, index):
+    #     # todo
+    #     if index is None:  # last
+    #         return (-1, None)
+    #     else:
+    #         return index, index + 1
+
+    # @lark.v_args(inline=True)
+    # def element_range(self, start, stop):
+    #     # todo
+    #     if start is None:
+    #         if stop is None:  # e.g. $[last to last]
+    #             start = -1
+    #         else:  # e.g. $[last to 5]
+    #             raise ValueError(f"invalid range: last to {stop}")
+    #     elif stop is not None and start > stop:
+    #         raise ValueError(f"invalid range: {start} to {stop}")
+    #     return start, stop
+
+    # @lark.v_args(inline=True)
+    # def element_index(self, s=None):
+    #     # todo
+    #     if s is None:
+    #         return None  # e.g. $[last]
+    #     return int(s)  # e.g. $[4]
+
+    # @lark.v_args(inline=True)
+    # def method(self, name, *args):
+    #     # todo
+    #     __import__("pdb").set_trace()  # FIXME
+    #     return name, args  # todo
 
 
 class QueryMode(enum.Enum):
@@ -51,44 +189,39 @@ class QueryMode(enum.Enum):
     strict = enum.auto()
 
 
-class PathType(enum.Enum):
-    absolute = enum.auto()
-    relative = enum.auto()
+@attr.s(kw_only=True)
+class Node:
+    pass
 
 
 @attr.s(kw_only=True)
-class Query:
+class Query(Node):
     mode = attr.ib(default=QueryMode.lax)
-    path = attr.ib()
-
-    def __call__(self, context):
-        return self.path(context, mode=self.mode)
+    expr = attr.ib()
 
 
 @attr.s(kw_only=True)
-class Path:
-    steps = attr.ib(factory=list)
-    type = attr.ib(default=PathType.absolute)
-
-    def __call__(self, context, *, mode):
-        objs = [context]
-        for step in self.steps:
-            new = []
-            for obj in objs:
-                new.extend(step(obj))
-            objs = new
-
-        return objs
+class Variable(Node):
+    pass
 
 
 @attr.s(kw_only=True)
-class Step:
-    def __call__(self, obj):
-        raise NotImplementedError
+class ContextVariable(Variable):
+    pass
 
 
 @attr.s(kw_only=True)
-class Member(Step):
+class NamedVariable(Variable):
+    name = attr.ib()
+
+
+@attr.s(kw_only=True)
+class Accessor(Node):
+    expr = attr.ib(default=None)
+
+
+@attr.s(kw_only=True)
+class MemberAccessor(Accessor):
     name = attr.ib()
 
     def __call__(self, obj):
@@ -97,21 +230,14 @@ class Member(Step):
 
 
 @attr.s(kw_only=True)
-class WildcardMember(Step):
+class WildcardMemberAccessor(Accessor):
     def __call__(self, obj):
         assert isinstance(obj, dict)
         yield from obj.values()
 
 
 @attr.s(kw_only=True)
-class WildcardElement(Step):
-    def __call__(self, obj):
-        assert isinstance(obj, list)
-        yield from obj
-
-
-@attr.s(kw_only=True)
-class RangesElement(Step):
+class ArrayAccessor(Accessor):
     ranges = attr.ib()
 
     def __call__(self, obj):
@@ -131,75 +257,72 @@ class RangesElement(Step):
         yield from itertools.compress(obj, selectors)
 
 
-class Transformer(lark.Transformer):
-    def query(self, children):
-        if isinstance(children[0], QueryMode):
-            mode, path = children
-        else:
-            (path,) = children
-            mode = QueryMode.lax
-        return Query(path=path, mode=mode)
+@attr.s(kw_only=True)
+class WildcardArrayAccessor(Accessor):
+    def __call__(self, obj):
+        assert isinstance(obj, list)
+        yield from obj
 
-    def path(self, steps):
-        return Path(steps=steps)
 
-    @lark.v_args(inline=True)
-    def mode(self, s):
-        return QueryMode[s]
+@attr.s(kw_only=True)
+class UnaryOperator(Node):
+    op = attr.ib()
+    value = attr.ib()
 
-    @lark.v_args(inline=True)
-    def member(self, name=None):
-        if name is None:
-            return WildcardMember()
-        else:
-            return Member(name=name)
 
-    @lark.v_args(inline=True)
-    def member_name(self, name):
-        return str(name)
+@attr.s(kw_only=True)
+class BinaryOperator(Node):
+    op = attr.ib()
+    left = attr.ib()
+    right = attr.ib()
 
-    @lark.v_args(inline=True)
-    def member_name_quoted(self, quoted_name):
-        name, pos = json.decoder.scanstring(quoted_name, 1)
-        assert pos == len(quoted_name)
-        return name
 
-    def element(self, ranges):
-        if not ranges:
-            return WildcardElement()
-        return RangesElement(ranges=ranges)
+@attr.s(kw_only=True)
+class BooleanOperator(Node):
+    op = attr.ib()
+    values = attr.ib()
 
-    @lark.v_args(inline=True)
-    def element_single_or_range(self, x):
-        return x
 
-    @lark.v_args(inline=True)
-    def element_single(self, index):
-        if index is None:  # last
-            return (-1, None)
-        else:
-            return index, index + 1
+@attr.s(kw_only=True)
+class Method(Node):
+    pass
 
-    @lark.v_args(inline=True)
-    def element_range(self, start, stop):
-        if start is None:
-            if stop is None:  # e.g. $[last to last]
-                start = -1
-            else:  # e.g. $[last to 5]
-                raise ValueError(f"invalid range: last to {stop}")
-        elif stop is not None and start > stop:
-            raise ValueError(f"invalid range: {start} to {stop}")
-        return start, stop
 
-    @lark.v_args(inline=True)
-    def element_index(self, s=None):
-        if s is None:
-            return None  # e.g. $[last]
-        return int(s)  # e.g. $[4]
+@attr.s(kw_only=True)
+class TypeMethod(Method):
+    pass
 
-    @lark.v_args(inline=True)
-    def method(self, name):
-        return "somemethod"  # todo
 
-    def __getattr__(self, name):
-        raise NotImplementedError(f"no transformer for {name}")
+@attr.s(kw_only=True)
+class SizeMethod(Method):
+    pass
+
+
+@attr.s(kw_only=True)
+class DoubleMethod(Method):
+    pass
+
+
+@attr.s(kw_only=True)
+class CeilingMethod(Method):
+    pass
+
+
+@attr.s(kw_only=True)
+class FloorMethod(Method):
+    pass
+
+
+@attr.s(kw_only=True)
+class AbsMethod(Method):
+    pass
+
+
+@attr.s(kw_only=True)
+class DatetimeMethod(Method):
+    template = attr.ib()
+
+
+@attr.s(kw_only=True)
+class KeyValuesMethod(Method):
+    pass
