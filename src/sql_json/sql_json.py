@@ -23,7 +23,9 @@ import pkg_resources
 grammar = pkg_resources.resource_string(__package__, "grammar.lark").decode()
 parser = lark.Lark(grammar, parser="lalr", start="expression", debug=True)
 
-OPERATOR_MAP = {
+UNARY_OPERATOR_MAP = {"+": operator.pos, "-": operator.neg}
+
+BINARY_OPERATOR_MAP = {
     "+": operator.add,
     "-": operator.sub,
     "*": operator.mul,
@@ -79,6 +81,7 @@ class Transformer(lark.Transformer):
         return expr
 
     accessor_op = _return_expr
+    method = _return_expr
     primary = _return_expr
     variable = _return_expr
     wff = _return_expr
@@ -112,6 +115,10 @@ class Transformer(lark.Transformer):
         return MemberAccessor(member=name)
 
     @lark.v_args(inline=True)
+    def wildcard_member_accessor(self, name):
+        return WildcardMemberAccessor()
+
+    @lark.v_args(inline=True)
     def accessor_expression(self, expr, accessor=None):
         if accessor is None:
             return expr
@@ -122,9 +129,7 @@ class Transformer(lark.Transformer):
     def unary_expression(self, args):
         try:
             op, expr = args
-            assert op in ("-", "+")
-            if op == "-":
-                expr = MinusOperator(expr=expr)
+            expr = UnaryOperator(op=UNARY_OPERATOR_MAP[op], expr=expr)
         except ValueError:
             (expr,) = args
         return expr
@@ -132,7 +137,7 @@ class Transformer(lark.Transformer):
     def multiplicative_expression(self, args):
         try:
             left, op, right = args
-            expr = BinaryOperator(left=left, op=OPERATOR_MAP[op], right=right)
+            expr = BinaryOperator(left=left, op=BINARY_OPERATOR_MAP[op], right=right)
         except ValueError:
             (expr,) = args
         return expr
@@ -141,26 +146,20 @@ class Transformer(lark.Transformer):
 
     @lark.v_args(inline=True)
     def literal(self, value):
-        expr = Constant(value=value)
-        return expr
+        return Constant(value=value)
 
     @lark.v_args(inline=True)
     def numeric_literal(self, s):
         return ast.literal_eval(s)
 
     @lark.v_args(inline=True)
+    def method_size(self):
+        return SizeMethod()
+
+    @lark.v_args(inline=True)
     def _(self, *args):
         __import__("pdb").set_trace()  # FIXME
         assert 0
-
-    # def path(self, steps):
-    #     # todo
-    #     return Path(steps=steps)
-
-    # @lark.v_args(inline=True)
-    # def member_name(self, name):
-    #     # todo
-    #     return str(name)
 
     # def element(self, ranges):
     #     # todo
@@ -200,12 +199,6 @@ class Transformer(lark.Transformer):
     #         return None  # e.g. $[last]
     #     return int(s)  # e.g. $[4]
 
-    # @lark.v_args(inline=True)
-    # def method(self, name, *args):
-    #     # todo
-    #     __import__("pdb").set_trace()  # FIXME
-    #     return name, args  # todo
-
 
 class QueryMode(enum.Enum):
     lax = enum.auto()
@@ -242,6 +235,9 @@ class ContextVariable(Variable):
 class NamedVariable(Variable):
     name = attr.ib()
 
+    def __call__(self, ctx):
+        yield ctx.variables[self.name]
+
 
 @attr.s(kw_only=True)
 class Accessor(Node):
@@ -252,16 +248,18 @@ class Accessor(Node):
 class MemberAccessor(Accessor):
     member = attr.ib()
 
-    def __call__(self, obj):
-        assert isinstance(obj, dict)
-        yield obj[self.member]
+    def __call__(self, ctx):
+        for obj in self.expr(ctx):
+            assert isinstance(obj, dict)
+            yield obj[self.member]
 
 
 @attr.s(kw_only=True)
 class WildcardMemberAccessor(Accessor):
-    def __call__(self, obj):
-        assert isinstance(obj, dict)
-        yield from obj.values()
+    def __call__(self, ctx):
+        for obj in self.expr(ctx):
+            assert isinstance(obj, dict)
+            yield from obj.values()
 
 
 @attr.s(kw_only=True)
@@ -287,18 +285,15 @@ class ArrayAccessor(Accessor):
 
 @attr.s(kw_only=True)
 class WildcardArrayAccessor(Accessor):
-    def __call__(self, obj):
-        assert isinstance(obj, list)
-        yield from obj
+    def __call__(self, ctx):
+        for obj in self.expr(ctx):
+            assert isinstance(obj, list)
+            yield from obj
 
 
 @attr.s(kw_only=True)
 class UnaryOperator(Node):
-    pass
-
-
-@attr.s(kw_only=True)
-class MinusOperator(UnaryOperator):
+    op = attr.ib()
     expr = attr.ib()
 
 
@@ -317,7 +312,7 @@ class BooleanOperator(Node):
 
 @attr.s(kw_only=True)
 class Method(Node):
-    pass
+    expr = attr.ib()
 
 
 @attr.s(kw_only=True)
@@ -327,12 +322,18 @@ class TypeMethod(Method):
 
 @attr.s(kw_only=True)
 class SizeMethod(Method):
-    pass
+    def __call__(self, ctx):
+        for obj in self.expr(ctx):
+            assert isinstance(obj, list)
+            yield len(obj)
 
 
 @attr.s(kw_only=True)
 class DoubleMethod(Method):
-    pass
+    def __call__(self, ctx):
+        for obj in self.expr(ctx):
+            assert isinstance(obj, (int, float, str))
+            yield float(obj)
 
 
 @attr.s(kw_only=True)
