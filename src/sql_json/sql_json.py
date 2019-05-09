@@ -1,7 +1,9 @@
 import ast
 import enum
+import functools
 import itertools
 import json
+import numbers
 import operator
 
 import attr
@@ -34,25 +36,27 @@ BINARY_OPERATOR_MAP = {
 }
 
 
-def query(query, context):
-    return compile(query)(context)
+def query(query, value, *, vars=None):
+    return compile(query)(value, vars=vars)
 
 
-def compile(input):
-    print(input)
+@functools.lru_cache()
+def compile(s):
+    print(s)
     try:
-        tree = parser.parse(input)
+        tree = parser.parse(s)
     except lark.UnexpectedInput as exc:
         raise QueryError(f"invalid query: {exc}") from exc
     print(tree.pretty())
     try:
-        transformed = Transformer().transform(tree)
+        query = Transformer().transform(tree)
+        assert isinstance(query, Query)
     except lark.exceptions.VisitError as exc:
         # The VisitError masks the underlying cause. Fortunately the original
         # exception is available from .context, so use that as the direct cause.
         raise QueryError(f"invalid query: {exc.__context__}") from exc.__context__
-    print(transformed)
-    return transformed
+    print(query)
+    return query
 
 
 class Error(Exception):
@@ -157,6 +161,11 @@ class Transformer(lark.Transformer):
         return SizeMethod()
 
     @lark.v_args(inline=True)
+    def subscript(self, *args):
+        # __import__("pdb").set_trace()  # FIXME
+        assert 0
+
+    @lark.v_args(inline=True)
     def _(self, *args):
         __import__("pdb").set_trace()  # FIXME
         assert 0
@@ -206,6 +215,13 @@ class QueryMode(enum.Enum):
 
 
 @attr.s(kw_only=True)
+class QueryContext:
+    query = attr.ib()
+    context_variable = attr.ib()
+    named_variables = attr.ib()
+
+
+@attr.s(kw_only=True)
 class Node:
     pass
 
@@ -215,10 +231,20 @@ class Query(Node):
     mode = attr.ib(default=QueryMode.lax)
     expr = attr.ib()
 
+    def __call__(self, value, *, vars=None):
+        if vars is None:
+            vars = {}
+        ctx = QueryContext(query=self, context_variable=value, named_variables=vars)
+        result = list(self.expr(ctx))
+        return result
+
 
 @attr.s(kw_only=True)
 class Constant(Node):
     value = attr.ib()
+
+    def __call__(self, ctx):
+        yield self.value
 
 
 @attr.s(kw_only=True)
@@ -228,7 +254,8 @@ class Variable(Node):
 
 @attr.s(kw_only=True)
 class ContextVariable(Variable):
-    pass
+    def __call__(self, ctx):
+        yield ctx.context_variable
 
 
 @attr.s(kw_only=True)
@@ -236,7 +263,7 @@ class NamedVariable(Variable):
     name = attr.ib()
 
     def __call__(self, ctx):
-        yield ctx.variables[self.name]
+        yield ctx.named_variables[self.name]
 
 
 @attr.s(kw_only=True)
@@ -296,12 +323,24 @@ class UnaryOperator(Node):
     op = attr.ib()
     expr = attr.ib()
 
+    def __call__(self, ctx):
+        value = self.expr(ctx)
+        assert isinstance(value, numbers.Number)
+        yield self.op(value)
+
 
 @attr.s(kw_only=True)
 class BinaryOperator(Node):
     op = attr.ib()
     left = attr.ib()
     right = attr.ib()
+
+    def __call__(self, ctx):
+        left_value = self.left(ctx)
+        right_value = self.right(ctx)
+        assert isinstance(left_value, numbers.Number)
+        assert isinstance(right_value, numbers.Number)
+        yield self.op(left_value, right_value)
 
 
 @attr.s(kw_only=True)
