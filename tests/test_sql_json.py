@@ -56,7 +56,7 @@ def test_invalid(s):
 def test_path_members():
     doc = {"foo": {"bar": {"baz": 123}}}
     query = "-$.foo.bar.baz + 100"
-    assert sql_json.query(query, doc) == [23]
+    assert sql_json.query(query, doc) == [-23]
 
 
 def test_path_elements():

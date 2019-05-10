@@ -36,6 +36,35 @@ BINARY_OPERATOR_MAP = {
 }
 
 
+def one(iterable):
+    value, *rest = iterable
+    if rest:
+        raise DataError("More than one result.")
+    return value
+
+
+def object_type(obj):
+    if obj is None:
+        return "null"
+    elif isinstance(obj, bool):
+        return "boolean"
+    elif isinstance(obj, numbers.Number):
+        return "number"
+    # todo: date
+    # todo: time without time zone
+    # todo: time with time zone
+    # todo: timestamp without time zone
+    # todo: timestamp with time zone
+    elif isinstance(obj, str):
+        return "str"
+    elif isinstance(obj, list):
+        return "array"
+    elif isinstance(obj, dict):
+        return "object"
+    else:
+        raise DataError(f"unsupported type: {type(obj).__name__}")
+
+
 def query(query, value, *, vars=None):
     return compile(query)(value, vars=vars)
 
@@ -75,6 +104,14 @@ class QueryError(Error):
     pass
 
 
+class DataError(Error):
+    """
+    Exception raised for problematic data.
+    """
+
+    pass
+
+
 class Transformer(lark.Transformer):
     def __getattr__(self, name):
         raise NotImplementedError(f"no transformer for {name}")
@@ -102,33 +139,11 @@ class Transformer(lark.Transformer):
     def mode(self, s):
         return QueryMode[s]
 
+    # Variables
+
     @lark.v_args(inline=True)
     def context_variable(self):
         return ContextVariable()
-
-    @lark.v_args(inline=True)
-    def key_name(self, name):
-        return str(name)
-
-    @lark.v_args(inline=True)
-    def string_literal(self, value):
-        return json.loads(value)
-
-    @lark.v_args(inline=True)
-    def member_accessor(self, name):
-        return MemberAccessor(member=name)
-
-    @lark.v_args(inline=True)
-    def wildcard_member_accessor(self, name):
-        return WildcardMemberAccessor()
-
-    @lark.v_args(inline=True)
-    def accessor_expression(self, expr, accessor=None):
-        if accessor is None:
-            return expr
-
-        accessor.expr = expr
-        return accessor
 
     def unary_expression(self, args):
         try:
@@ -148,22 +163,63 @@ class Transformer(lark.Transformer):
 
     additive_expression = multiplicative_expression
 
+    # Literals
+
     @lark.v_args(inline=True)
     def literal(self, value):
         return Constant(value=value)
+
+    @lark.v_args(inline=True)
+    def null_literal(self, value):
+        return None
+
+    @lark.v_args(inline=True)
+    def string_literal(self, value):
+        return json.loads(value)
 
     @lark.v_args(inline=True)
     def numeric_literal(self, s):
         return ast.literal_eval(s)
 
     @lark.v_args(inline=True)
-    def method_size(self):
-        return SizeMethod()
+    def boolean_literal(self, s):
+        return s == "true"
+
+    # Accessors
 
     @lark.v_args(inline=True)
-    def subscript(self, *args):
-        # __import__("pdb").set_trace()  # FIXME
+    def accessor_expression(self, expr, accessor=None):
+        if accessor is None:
+            return expr
+        accessor.expr = expr
+        return accessor
+
+    @lark.v_args(inline=True)
+    def wildcard_member_accessor(self):
+        return WildcardMemberAccessor()
+
+    @lark.v_args(inline=True)
+    def member_accessor(self, name):
+        return MemberAccessor(member=name)
+
+    @lark.v_args(inline=True)
+    def key_name(self, name):
+        return str(name)
+
+    @lark.v_args(inline=True)
+    def wildcard_array_accessor(self):
+        return WildcardArrayAccessor()
+
+    @lark.v_args(inline=True)
+    def subscript(self, from_, to=None):
+        __import__("pdb").set_trace()  # FIXME
         assert 0
+
+    # Methods
+
+    @lark.v_args(inline=True)
+    def method_size(self):
+        return SizeMethod()
 
     @lark.v_args(inline=True)
     def _(self, *args):
@@ -277,7 +333,8 @@ class MemberAccessor(Accessor):
 
     def __call__(self, ctx):
         for obj in self.expr(ctx):
-            assert isinstance(obj, dict)
+            if not isinstance(obj, dict):
+                raise DataError(f"expected object, got {type(obj).__name__}")
             yield obj[self.member]
 
 
@@ -314,6 +371,8 @@ class ArrayAccessor(Accessor):
 class WildcardArrayAccessor(Accessor):
     def __call__(self, ctx):
         for obj in self.expr(ctx):
+            if not isinstance(obj, list):
+                raise DataError(f"expected array, got {type(obj).__name__}")
             assert isinstance(obj, list)
             yield from obj
 
@@ -324,8 +383,9 @@ class UnaryOperator(Node):
     expr = attr.ib()
 
     def __call__(self, ctx):
-        value = self.expr(ctx)
-        assert isinstance(value, numbers.Number)
+        value = one(self.expr(ctx))
+        if not isinstance(value, numbers.Number):
+            raise DataError(f"expected number, got {type(value).__name__}")
         yield self.op(value)
 
 
@@ -336,10 +396,12 @@ class BinaryOperator(Node):
     right = attr.ib()
 
     def __call__(self, ctx):
-        left_value = self.left(ctx)
-        right_value = self.right(ctx)
-        assert isinstance(left_value, numbers.Number)
-        assert isinstance(right_value, numbers.Number)
+        left_value = one(self.left(ctx))
+        right_value = one(self.right(ctx))
+        if not isinstance(left_value, numbers.Number):
+            raise DataError(f"expected number, got {type(left_value).__name__}")
+        if not isinstance(right_value, numbers.Number):
+            raise DataError(f"expected number, got {type(right_value).__name__}")
         yield self.op(left_value, right_value)
 
 
@@ -356,14 +418,17 @@ class Method(Node):
 
 @attr.s(kw_only=True)
 class TypeMethod(Method):
-    pass
+    def __call__(self, ctx):
+        for obj in self.expr(ctx):
+            yield object_type(obj)
 
 
 @attr.s(kw_only=True)
 class SizeMethod(Method):
     def __call__(self, ctx):
         for obj in self.expr(ctx):
-            assert isinstance(obj, list)
+            if not isinstance(obj, list):
+                raise DataError(f"expected array, got {type(obj).__name__}")
             yield len(obj)
 
 
@@ -371,7 +436,8 @@ class SizeMethod(Method):
 class DoubleMethod(Method):
     def __call__(self, ctx):
         for obj in self.expr(ctx):
-            assert isinstance(obj, (int, float, str))
+            if not isinstance(obj, (int, float, str)) or isinstance(obj, bool):
+                raise DataError(f"expected number-like, got {type(obj).__name__}")
             yield float(obj)
 
 
