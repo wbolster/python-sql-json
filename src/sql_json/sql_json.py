@@ -121,10 +121,22 @@ class Transformer(lark.Transformer):
         """Helper to return the child expression."""
         return expr
 
-    accessor_op = _return_expr
-    method = _return_expr
     primary = _return_expr
+
+    @lark.v_args(inline=True)
+    def mode(self, s):
+        return QueryMode[s]
+
+    # Variables
+
     variable = _return_expr
+
+    @lark.v_args(inline=True)
+    def context_variable(self):
+        return ContextVariable()
+
+    # Expressions
+
     wff = _return_expr
 
     def expression(self, args):
@@ -135,21 +147,12 @@ class Transformer(lark.Transformer):
             mode = QueryMode.lax
         return Query(expr=expr, mode=mode)
 
-    @lark.v_args(inline=True)
-    def mode(self, s):
-        return QueryMode[s]
-
-    # Variables
-
-    @lark.v_args(inline=True)
-    def context_variable(self):
-        return ContextVariable()
-
     def unary_expression(self, args):
         try:
             op, expr = args
             expr = UnaryOperator(op=UNARY_OPERATOR_MAP[op], expr=expr)
         except ValueError:
+            # No "+" or "-".
             (expr,) = args
         return expr
 
@@ -158,6 +161,7 @@ class Transformer(lark.Transformer):
             left, op, right = args
             expr = BinaryOperator(left=left, op=BINARY_OPERATOR_MAP[op], right=right)
         except ValueError:
+            # No "*" or "/" or "%".
             (expr,) = args
         return expr
 
@@ -187,6 +191,8 @@ class Transformer(lark.Transformer):
 
     # Accessors
 
+    accessor_op = _return_expr
+
     @lark.v_args(inline=True)
     def accessor_expression(self, expr, accessor=None):
         if accessor is None:
@@ -211,11 +217,25 @@ class Transformer(lark.Transformer):
         return WildcardArrayAccessor()
 
     @lark.v_args(inline=True)
+    def array_accessor(self, subscripts):
+        return ArrayAccessor(subscripts=subscripts)
+
+    @lark.v_args(inline=True)
     def subscript(self, from_, to=None):
-        __import__("pdb").set_trace()  # FIXME
-        assert 0
+        if to is None:
+            expr = (from_,)
+        else:
+            expr = (from_, to)
+        return expr
+
+    def last_subscript(self, args):
+        return "last"
+
+    subscript_list = _return_expr
 
     # Methods
+
+    method = _return_expr
 
     @lark.v_args(inline=True)
     def method_size(self):
@@ -348,23 +368,24 @@ class WildcardMemberAccessor(Accessor):
 
 @attr.s(kw_only=True)
 class ArrayAccessor(Accessor):
-    ranges = attr.ib()
+    subscripts = attr.ib()
 
-    def __call__(self, obj):
-        # todo how to deal with out of range values?
-        assert isinstance(obj, list)
-        selectors = [False for _ in range(len(obj))]
-        for start, stop in self.ranges:
-            assert (start, stop) != (None, None)
-            if start is None:
-                r = range(0, stop)
-            elif stop is None:
-                r = range(start, len(obj))
-            else:
-                r = range(start, stop)
-            for i in r:
-                selectors[i] = True
-        yield from itertools.compress(obj, selectors)
+    def __call__(self, ctx):
+        for obj in self.expr(ctx):
+            # todo how to deal with out of range values?
+            assert isinstance(obj, list)
+            selectors = [False for _ in range(len(obj))]
+            for start, stop in self.ranges:
+                assert (start, stop) != (None, None)
+                if start is None:
+                    r = range(0, stop)
+                elif stop is None:
+                    r = range(start, len(obj))
+                else:
+                    r = range(start, stop)
+                for i in r:
+                    selectors[i] = True
+            yield from itertools.compress(obj, selectors)
 
 
 @attr.s(kw_only=True)
